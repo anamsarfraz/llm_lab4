@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import chainlit as cl
-from agents.base_agent import Agent
+from agents.planning_agent import PlanningAgent
 import base64
 
 
@@ -51,7 +51,7 @@ Milestones should be formatted like this:
 client = AsyncOpenAI()
 
 # Create an instance of the Agent class
-planning_agent = Agent(name="Planning Agent", client=client, prompt=PLANNING_PROMPT)
+planning_agent = PlanningAgent(name="Planning Agent", client=client, prompt=PLANNING_PROMPT)
 
 
 gen_kwargs = {

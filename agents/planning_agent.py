@@ -101,32 +101,30 @@ class PlanningAgent(Agent):
 
         function_name = ""
         arguments = ""
-        function_data = {}
-        function_calls = {}
         async for part in stream:
             if part.choices[0].delta.tool_calls:
                 tool_call = part.choices[0].delta.tool_calls[0]
                 function_name_delta = tool_call.function.name or ""
                 arguments_delta = tool_call.function.arguments or ""
-                index = tool_call.index
-                #print(f"tool_call: {tool_call}")
-                index_data = function_data.setdefault(index, {})
-                index_data.setdefault("name", []).append(function_name_delta)
-                index_data.setdefault("arguments", []).append(arguments_delta)             
-
+                
+                function_name += function_name_delta
+                arguments += arguments_delta
+        
             if token := part.choices[0].delta.content or "":
                 await response_message.stream_token(token)        
-        for index, index_data in function_data.items():
-            index_data["name"] = ''.join(index_data["name"])
-            index_data["arguments"] = ''.join(index_data["arguments"])
-            function_calls[index_data["name"]] = index_data["arguments"]
-        if function_calls:
-            print(function_calls)
+        
+        if function_name:
+            print("DEBUG: function_name:")
+            print("type:", type(function_name))
+            print("value:", function_name)
+            print("DEBUG: arguments:")
+            print("type:", type(arguments))
+            print("value:", arguments)
             
-            if "updateArtifact" in function_calls:
+            if function_name == "updateArtifact":
                 import json
                 
-                arguments_dict = json.loads(function_calls["updateArtifact"])
+                arguments_dict = json.loads(arguments)
                 filename = arguments_dict.get("filename")
                 contents = arguments_dict.get("contents")
                 
@@ -145,18 +143,12 @@ class PlanningAgent(Agent):
                     async for part in stream:
                         if token := part.choices[0].delta.content or "":
                             await response_message.stream_token(token)  
-            if "callAgent" in function_calls:
-                import json
 
-                #arguments_dict = json.loads(arguments)
-                agent_to_call = function_calls["callAgent"]
-                if agent_to_call == "implementation":
-                    implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
-                    response_message = await implementation_agent.execute(message_history)
         else:
             print("No tool call")
 
         await response_message.update()
 
         return response_message.content
+
 
