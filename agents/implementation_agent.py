@@ -8,7 +8,7 @@ class ImplementationAgent(Agent):
             "type": "function",
             "function": {
                 "name": "updateArtifact",
-                "description": "Update an artifact file which is HTML, CSS, with the given contents.",
+                "description": "Update an artifact file which is HTML, or CSS, with the given contents.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -52,32 +52,34 @@ class ImplementationAgent(Agent):
 
         stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
 
-        function_name = ""
-        arguments = ""
+        function_data = {} 
+        function_calls = {}
+
         async for part in stream:
             if part.choices[0].delta.tool_calls:
                 tool_call = part.choices[0].delta.tool_calls[0]
+                index = tool_call.index
                 function_name_delta = tool_call.function.name or ""
                 arguments_delta = tool_call.function.arguments or ""
-                
-                function_name += function_name_delta
-                arguments += arguments_delta
+                index_data = function_data.setdefault(index, {})
+                index_data.setdefault("name", []).append(function_name_delta)
+                index_data.setdefault("arguments", []).append(arguments_delta)
         
             if token := part.choices[0].delta.content or "":
                 await response_message.stream_token(token)        
         
-        if function_name:
-            print("DEBUG: function_name:")
-            print("type:", type(function_name))
-            print("value:", function_name)
-            print("DEBUG: arguments:")
-            print("type:", type(arguments))
-            print("value:", arguments)
-            
-            if function_name == "updateArtifact":
+        for index, index_data in function_data.items():
+            index_data["name"] = ''.join(index_data["name"])
+            index_data["arguments"] = ''.join(index_data["arguments"])
+            function_calls[index_data["name"]] = index_data["arguments"]
+
+        if function_calls:
+            print(f"DEBUG: function_calls: {function_calls}")
+
+            if "updateArtifact" in function_calls:
                 import json
                 
-                arguments_dict = json.loads(arguments)
+                arguments_dict = json.loads(function_calls["updateArtifact"])
                 filename = arguments_dict.get("filename")
                 contents = arguments_dict.get("contents")
                 
@@ -95,11 +97,13 @@ class ImplementationAgent(Agent):
                     stream = await self.client.chat.completions.create(messages=message_history, stream=True, **self.gen_kwargs)
                     async for part in stream:
                         if token := part.choices[0].delta.content or "":
-                            await response_message.stream_token(token)  
+                            await response_message.stream_token(token)
+
         else:
             print("No tool call")
 
         await response_message.update()
 
-        return response_message.content
+        return response_message
+
 

@@ -1,4 +1,5 @@
 import os
+import json
 
 from agents.base_agent import Agent
 from agents.implementation_agent import ImplementationAgent
@@ -8,11 +9,11 @@ import chainlit as cl
 IMPLEMENTATION_PROMPT = """\
 You are a software engineer, implementating the web pages based on the provided plan.
 
-You should read the plan.md file, and tackle ONE of the milestones. In order to maximize success, we want to take quite small steps.
+You should read process from the artifacts provided to you at the end of the system prompt, and tackle ONE of the milestones at a time. In order to maximize success, we want to take quite small steps.
 
-You should also take feedback to fix a milestone.
+You should also take feedback to fix a milestone before marking it as completed.
 
-You will generate an index.html and styles.css in the artifacts folder.
+You will generate an index.html and a styles.css file for your implementation for the milestone.
 
 If the user or reviewer confirms the implementation is good, use available tools to save the index.html and styles.css in an artifact \
 folder. If the user has feedback on the implementation, revise the implementation, and save it using \
@@ -22,7 +23,7 @@ You will not regenerate or modify the existing plan.
 If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
 use the tool again if there are no changes.
 
-After implementing a milestone, update it. 
+After implementing a milestone, update the milestone section of the plan and use the tool available to you to save the updated artificat in the markdown file. 
 
 Milestones should be formatted like this:
 
@@ -99,32 +100,32 @@ class PlanningAgent(Agent):
 
         stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
 
-        function_name = ""
-        arguments = ""
+        function_data = {} 
+        function_calls = {}
+
         async for part in stream:
             if part.choices[0].delta.tool_calls:
                 tool_call = part.choices[0].delta.tool_calls[0]
+                index = tool_call.index
                 function_name_delta = tool_call.function.name or ""
                 arguments_delta = tool_call.function.arguments or ""
-                
-                function_name += function_name_delta
-                arguments += arguments_delta
+                index_data = function_data.setdefault(index, {})
+                index_data.setdefault("name", []).append(function_name_delta)
+                index_data.setdefault("arguments", []).append(arguments_delta)
         
             if token := part.choices[0].delta.content or "":
                 await response_message.stream_token(token)        
         
-        if function_name:
-            print("DEBUG: function_name:")
-            print("type:", type(function_name))
-            print("value:", function_name)
-            print("DEBUG: arguments:")
-            print("type:", type(arguments))
-            print("value:", arguments)
-            
-            if function_name == "updateArtifact":
-                import json
-                
-                arguments_dict = json.loads(arguments)
+        for index, index_data in function_data.items():
+            index_data["name"] = ''.join(index_data["name"])
+            index_data["arguments"] = ''.join(index_data["arguments"])
+            function_calls[index_data["name"]] = index_data["arguments"]
+
+        if function_calls:
+            print(f"DEBUG: function_calls: {function_calls}")
+
+            if "updateArtifact" in function_calls:                
+                arguments_dict = json.loads(function_calls["updateArtifact"])
                 filename = arguments_dict.get("filename")
                 contents = arguments_dict.get("contents")
                 
@@ -142,8 +143,17 @@ class PlanningAgent(Agent):
                     stream = await self.client.chat.completions.create(messages=message_history, stream=True, **self.gen_kwargs)
                     async for part in stream:
                         if token := part.choices[0].delta.content or "":
-                            await response_message.stream_token(token)  
-
+                            await response_message.stream_token(token)
+            if "callAgent" in function_calls:
+                arguments_dict = json.loads(function_calls["callAgent"])
+                agent_name = arguments_dict.get("agent_name")
+                if agent_name == "implementation":
+                    message_history.append({
+                        "role": "system",
+                        "content": f"Provide an implementation."
+                    })
+                    implementation_agent = ImplementationAgent(name="Implementatuib Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
+                    response_message = await implementation_agent.execute(message_history)
         else:
             print("No tool call")
 
