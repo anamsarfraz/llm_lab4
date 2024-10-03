@@ -56,5 +56,4 @@ class Agent:
                         artifacts_content += f"<FILE name='{filename}'>\n{file_content}\n</FILE>\n"
         
         artifacts_content += "</ARTIFACTS>"
-
         return f"{self.prompt}\n{artifacts_content}"

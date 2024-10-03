@@ -9,11 +9,11 @@ import chainlit as cl
 IMPLEMENTATION_PROMPT = """\
 You are a software engineer, implementating the web pages based on the provided plan.
 
-You should read process from the artifacts provided to you at the end of the system prompt, and tackle ONE of the milestones at a time. In order to maximize success, we want to take quite small steps.
+You should read the artifacts provided to you at the end of this prompt. Take small steps and tackle ONE of the milestones at a time. 
 
 You should also take feedback to fix a milestone before marking it as completed.
 
-You will generate an index.html and a styles.css file for your implementation for the milestone.
+You will generate  index.html and styles.css files for your implementation of each milestone.
 
 If the user or reviewer confirms the implementation is good, use available tools to save the index.html and styles.css in an artifact \
 folder. If the user has feedback on the implementation, revise the implementation, and save it using \
@@ -23,13 +23,16 @@ You will not regenerate or modify the existing plan.
 If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
 use the tool again if there are no changes.
 
-After implementing a milestone, update the milestone section of the plan and use the tool available to you to save the updated artificat in the markdown file. 
+After implementing a milestone, update the milestone section of the provided plan and use the tool to save the updated artificat in the markdown file. 
 
-Milestones should be formatted like this:
+Milestones are formatted like below:
 
- - [*] 1. This milestone has been implemented, only mark if you have implemented a milestone
- - [ ] 2. This is the second milestone but not implemented yet
- - [ ] 3. This is the third milestone but not implemented yet
+ - [ ] 1. This is the first milestone.
+ - [ ] 2. This is the second milestone 
+ - [ ] 3. This is the third milestone 
+
+ Once the implementation is completed, update the milestone as shown below:
+ [*] 1. This milestone has been implemented, only mark if you have implemented a milestone
 """
 
 class PlanningAgent(Agent):
@@ -77,7 +80,7 @@ class PlanningAgent(Agent):
     ]
     def __init__(self, name, client, prompt="", gen_kwargs=None):
 
-        super().__init__(name, client, prompt="", gen_kwargs=None)
+        super().__init__(name, client, prompt=prompt, gen_kwargs=gen_kwargs)
 
     async def execute(self, message_history):
         """
@@ -97,11 +100,9 @@ class PlanningAgent(Agent):
 
         response_message = cl.Message(content="")
         await response_message.send()
-
         stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
 
         function_data = {} 
-        function_calls = {}
 
         async for part in stream:
             if part.choices[0].delta.tool_calls:
@@ -119,13 +120,11 @@ class PlanningAgent(Agent):
         for index, index_data in function_data.items():
             index_data["name"] = ''.join(index_data["name"])
             index_data["arguments"] = ''.join(index_data["arguments"])
-            function_calls[index_data["name"]] = index_data["arguments"]
 
-        if function_calls:
-            print(f"DEBUG: function_calls: {function_calls}")
+            print(f"DEBUG: function_data: {function_data}")
 
-            if "updateArtifact" in function_calls:                
-                arguments_dict = json.loads(function_calls["updateArtifact"])
+            if "updateArtifact" == index_data["name"]:                
+                arguments_dict = json.loads(index_data["arguments"])
                 filename = arguments_dict.get("filename")
                 contents = arguments_dict.get("contents")
                 
@@ -144,15 +143,15 @@ class PlanningAgent(Agent):
                     async for part in stream:
                         if token := part.choices[0].delta.content or "":
                             await response_message.stream_token(token)
-            if "callAgent" in function_calls:
-                arguments_dict = json.loads(function_calls["callAgent"])
+            if "callAgent" == index_data["name"]:
+                arguments_dict = json.loads(index_data["arguments"])
                 agent_name = arguments_dict.get("agent_name")
                 if agent_name == "implementation":
                     message_history.append({
                         "role": "system",
-                        "content": f"Provide an implementation."
+                        "content": f"Provide an implementation for a mileston in the plan and update the plan when the implentation is done."
                     })
-                    implementation_agent = ImplementationAgent(name="Implementatuib Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
+                    implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
                     response_message = await implementation_agent.execute(message_history)
         else:
             print("No tool call")

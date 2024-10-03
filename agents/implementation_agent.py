@@ -1,6 +1,7 @@
 from agents.base_agent import Agent
 import chainlit as cl
 import os
+import json
 
 class ImplementationAgent(Agent):
     tools = [
@@ -29,7 +30,7 @@ class ImplementationAgent(Agent):
     ]
     def __init__(self, name, client, prompt="", gen_kwargs=None):
 
-        super().__init__(name, client, prompt="", gen_kwargs=None)
+        super().__init__(name, client, prompt=prompt, gen_kwargs=gen_kwargs)
 
     async def execute(self, message_history):
         """
@@ -53,7 +54,6 @@ class ImplementationAgent(Agent):
         stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
 
         function_data = {} 
-        function_calls = {}
 
         async for part in stream:
             if part.choices[0].delta.tool_calls:
@@ -71,15 +71,11 @@ class ImplementationAgent(Agent):
         for index, index_data in function_data.items():
             index_data["name"] = ''.join(index_data["name"])
             index_data["arguments"] = ''.join(index_data["arguments"])
-            function_calls[index_data["name"]] = index_data["arguments"]
 
-        if function_calls:
-            print(f"DEBUG: function_calls: {function_calls}")
+            print(f"DEBUG: function_data: {function_data}")
 
-            if "updateArtifact" in function_calls:
-                import json
-                
-                arguments_dict = json.loads(function_calls["updateArtifact"])
+            if "updateArtifact" == index_data["name"]:
+                arguments_dict = json.loads(index_data["arguments"])
                 filename = arguments_dict.get("filename")
                 contents = arguments_dict.get("contents")
                 
