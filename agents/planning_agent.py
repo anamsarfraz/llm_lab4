@@ -88,8 +88,8 @@ class PlanningAgent(Agent):
 
 
         response_message, function_data = await self.handle_tool_calls(copied_message_history)
-        print(f"{self.__class__.__name__}: Function data: ", function_data)
-        print(f"{self.__class__.__name__}: Response text: ", response_message.content)
+        #print(f"{self.__class__.__name__}: Function data: ", function_data)
+        #print(f"{self.__class__.__name__}: Response text: ", response_message.content)
         if response_message.content:
             message_history.append({"role": "assistant", "content": response_message.content})
             copied_message_history.append({"role": "assistant", "content": response_message.content})
@@ -113,23 +113,22 @@ class PlanningAgent(Agent):
                         # Add a message to the message history
                         message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
                         copied_message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+                        response_message, function_data = await self.handle_tool_calls(copied_message_history)
+                        print(f"{self.__class__.__name__}: Function data after updating artifact: ", function_data)
+                        print(f"{self.__class__.__name__}: Response text after updating artifact: ", response_message.content)
+                        if response_message.content:
+                            message_history.append({"role": "assistant", "content": response_message.content})
+                            copied_message_history.append({"role": "assistant", "content": response_message.content})
+                            cl.user_session.set("message_history", message_history)
                 elif "callAgent" == index_data["name"]:
                     arguments_dict = json.loads(index_data["arguments"])
                     agent_name = arguments_dict.get("agent_name")
                     print(f"{self.__class__.__name__}: Calling {agent_name} agent from planning agent")
-                    message_history.append({"role": "system", "content": f"Calling {agent_name} agent."})
-                    copied_message_history.append({"role": "system", "content": f"Calling {agent_name} agent."})
                     if agent_name == "implementation":
                         implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
-                        await implementation_agent.execute(message_history)
+                        await implementation_agent.execute(copied_message_history)
                             
-            response_message, function_data = await self.handle_tool_calls(copied_message_history)
-            print(f"{self.__class__.__name__}: Function data after function calls: ", function_data)
-            print(f"{self.__class__.__name__}: Response text after function calls: ", response_message.content)
-            if response_message.content:
-                message_history.append({"role": "assistant", "content": response_message.content})
-                copied_message_history.append({"role": "assistant", "content": response_message.content})
-                cl.user_session.set("message_history", message_history)
+            
             
 
         else:

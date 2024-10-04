@@ -50,8 +50,8 @@ class ImplementationAgent(Agent):
             copied_message_history.insert(0, {"role": "system", "content": self._build_system_prompt()})
 
         response_message, function_data = await self.handle_tool_calls(copied_message_history)
-        print(f"{self.__class__.__name__}: Function data: ", function_data)
-        print(f"{self.__class__.__name__}: Response text: ", response_message.content)
+        #print(f"{self.__class__.__name__}: Function data: ", function_data)
+        #print(f"{self.__class__.__name__}: Response text: ", response_message.content)
         if response_message.content:
             message_history.append({"role": "assistant", "content": response_message.content})
             copied_message_history.append({"role": "assistant", "content": response_message.content})
