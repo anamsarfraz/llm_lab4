@@ -4,6 +4,8 @@ import json
 from agents.base_agent import Agent
 from agents.implementation_agent import ImplementationAgent
 import chainlit as cl
+from langfuse.openai import AsyncOpenAI
+
 
 
 IMPLEMENTATION_PROMPT = """\
@@ -21,6 +23,9 @@ After creating the implementation, do the following:
 You should also take feedback to fix a milestone. If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
 use the tool again if there are no changes.
 """
+
+client = AsyncOpenAI()
+implementation_agent = ImplementationAgent(name="Implementation Agent", client=client, prompt=IMPLEMENTATION_PROMPT)
 
 class PlanningAgent(Agent):
     tools = [
@@ -125,7 +130,6 @@ class PlanningAgent(Agent):
                     agent_name = arguments_dict.get("agent_name")
                     print(f"{self.__class__.__name__}: Calling {agent_name} agent from planning agent")
                     if agent_name == "implementation":
-                        implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
                         await implementation_agent.execute(copied_message_history)
                             
             
