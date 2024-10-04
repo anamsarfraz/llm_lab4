@@ -7,32 +7,19 @@ import chainlit as cl
 
 
 IMPLEMENTATION_PROMPT = """\
-You are a software engineer, implementating the web pages based on the provided plan.
+You are a software engineer, implementing the web pages based on the provided plan.
 
-You should read the artifacts provided to you at the end of this prompt. Take small steps and tackle ONE of the milestones at a time. 
+You should read the artifacts provided to you at the end of this prompt. Your role is to pick and implement ONE milestone at a time.
 
-You should also take feedback to fix a milestone before marking it as completed.
+You will generate both index.html and styles.css files for your implementation of each milestone and mark off the milestone in the plan markdown file.
+You will save each file using the tool available to update the artifact. Do not return the implementation to the user. Only update the artifacts with the implementation
 
-You will generate  index.html and styles.css files for your implementation of each milestone.
+After creating the implementation, do the following:
+    1. use available tools to save or update both index.html and styles.css in the artifact folder. A tool is available to update the artifacts. 
+    2. use the available tools to mark off the milestone in the provided plan in the artifact folder. A tool is available to update the artifacts.
 
-If the user or reviewer confirms the implementation is good, use available tools to save the index.html and styles.css in an artifact \
-folder. If the user has feedback on the implementation, revise the implementation, and save it using \
-the tool again. A tool is available to update the artifact. Your role is to only pick and implement ONE milestone at a time.
-You will not regenerate or modify the existing plan.
-
-If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
+You should also take feedback to fix a milestone. If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
 use the tool again if there are no changes.
-
-After implementing a milestone, update the milestone section of the provided plan and use the tool to save the updated artificat in the markdown file. 
-
-Milestones are formatted like below:
-
- - [ ] 1. This is the first milestone.
- - [ ] 2. This is the second milestone 
- - [ ] 3. This is the third milestone 
-
- Once the implementation is completed, update the milestone as shown below:
- [*] 1. This milestone has been implemented, only mark if you have implemented a milestone
 """
 
 class PlanningAgent(Agent):
@@ -41,7 +28,7 @@ class PlanningAgent(Agent):
             "type": "function",
             "function": {
                 "name": "updateArtifact",
-                "description": "Update an artifact file which is markdown with the given contents of the generated.",
+                "description": "Update an artifact file which is markdown with the given contents.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -88,6 +75,7 @@ class PlanningAgent(Agent):
 
         Note: probably shouldn't couple this with chainlit, but this is just a prototype.
         """
+        print(f"{self.__class__.__name__}: Inside the execution and processing the request")  
         copied_message_history = message_history.copy()
 
         # Check if the first message is a system prompt
@@ -98,65 +86,56 @@ class PlanningAgent(Agent):
             # Insert the agent's prompt at the beginning
             copied_message_history.insert(0, {"role": "system", "content": self._build_system_prompt()})
 
-        response_message = cl.Message(content="")
-        await response_message.send()
-        stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
 
-        function_data = {} 
-
-        async for part in stream:
-            if part.choices[0].delta.tool_calls:
-                tool_call = part.choices[0].delta.tool_calls[0]
-                index = tool_call.index
-                function_name_delta = tool_call.function.name or ""
-                arguments_delta = tool_call.function.arguments or ""
-                index_data = function_data.setdefault(index, {})
-                index_data.setdefault("name", []).append(function_name_delta)
-                index_data.setdefault("arguments", []).append(arguments_delta)
+        response_message, function_data = await self.handle_tool_calls(copied_message_history)
+        print(f"{self.__class__.__name__}: Function data: ", function_data)
+        print(f"{self.__class__.__name__}: Response text: ", response_message.content)
+        if response_message.content:
+            message_history.append({"role": "assistant", "content": response_message.content})
+            copied_message_history.append({"role": "assistant", "content": response_message.content})
+            cl.user_session.set("message_history", message_history)      
         
-            if token := part.choices[0].delta.content or "":
-                await response_message.stream_token(token)        
-        
-        for index, index_data in function_data.items():
-            index_data["name"] = ''.join(index_data["name"])
-            index_data["arguments"] = ''.join(index_data["arguments"])
-
-            print(f"DEBUG: function_data: {function_data}")
-
-            if "updateArtifact" == index_data["name"]:                
-                arguments_dict = json.loads(index_data["arguments"])
-                filename = arguments_dict.get("filename")
-                contents = arguments_dict.get("contents")
-                
-                if filename and contents:
-                    os.makedirs("artifacts", exist_ok=True)
-                    with open(os.path.join("artifacts", filename), "w") as file:
-                        file.write(contents)
+        #print(f"DEBUG: function_data: {function_data}")
+        if function_data:
+            print(f"{self.__class__.__name__}: Received Function data just inside while loop: ", function_data)
+            for index, index_data in function_data.items():
+                if "updateArtifact" == index_data["name"]:
+                    arguments_dict = json.loads(index_data["arguments"])
+                    filename = arguments_dict.get("filename")
+                    contents = arguments_dict.get("contents")
+                    print(f"{self.__class__.__name__}: Updating artifacts: {filename} inside agent") 
                     
-                    # Add a message to the message history
-                    message_history.append({
-                        "role": "system",
-                        "content": f"The artifact '{filename}' was updated."
-                    })
+                    if filename and contents:
+                        os.makedirs("artifacts", exist_ok=True)
+                        with open(os.path.join("artifacts", filename), "w") as file:
+                            file.write(contents)
+                        
+                        # Add a message to the message history
+                        message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+                        copied_message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+                elif "callAgent" == index_data["name"]:
+                    arguments_dict = json.loads(index_data["arguments"])
+                    agent_name = arguments_dict.get("agent_name")
+                    print(f"{self.__class__.__name__}: Calling {agent_name} agent from planning agent")
+                    message_history.append({"role": "system", "content": f"Calling {agent_name} agent."})
+                    copied_message_history.append({"role": "system", "content": f"Calling {agent_name} agent."})
+                    if agent_name == "implementation":
+                        implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
+                        await implementation_agent.execute(message_history)
+                            
+            response_message, function_data = await self.handle_tool_calls(copied_message_history)
+            print(f"{self.__class__.__name__}: Function data after function calls: ", function_data)
+            print(f"{self.__class__.__name__}: Response text after function calls: ", response_message.content)
+            if response_message.content:
+                message_history.append({"role": "assistant", "content": response_message.content})
+                copied_message_history.append({"role": "assistant", "content": response_message.content})
+                cl.user_session.set("message_history", message_history)
+            
 
-                    stream = await self.client.chat.completions.create(messages=message_history, stream=True, **self.gen_kwargs)
-                    async for part in stream:
-                        if token := part.choices[0].delta.content or "":
-                            await response_message.stream_token(token)
-            if "callAgent" == index_data["name"]:
-                arguments_dict = json.loads(index_data["arguments"])
-                agent_name = arguments_dict.get("agent_name")
-                if agent_name == "implementation":
-                    message_history.append({
-                        "role": "system",
-                        "content": f"Provide an implementation for a mileston in the plan and update the plan when the implentation is done."
-                    })
-                    implementation_agent = ImplementationAgent(name="Implementation Agent", client=self.client, prompt=IMPLEMENTATION_PROMPT)
-                    response_message = await implementation_agent.execute(message_history)
         else:
             print("No tool call")
 
-        await response_message.update()
+        
 
         return response_message.content
 

@@ -57,3 +57,36 @@ class Agent:
         
         artifacts_content += "</ARTIFACTS>"
         return f"{self.prompt}\n{artifacts_content}"
+    
+    async def handle_tool_calls(self, message_history):
+
+        stream = await self.client.chat.completions.create(messages=message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
+
+        function_data = {}
+        response_message = cl.Message(content="")
+        #await response_message.send()    
+        
+        async for part in stream:
+            if part.choices[0].delta.tool_calls:
+                tool_call = part.choices[0].delta.tool_calls[0]
+                index = tool_call.index
+                function_name_delta = tool_call.function.name or ""
+                arguments_delta = tool_call.function.arguments or ""
+                index_data = function_data.setdefault(index, {})
+                index_data.setdefault("name", []).append(function_name_delta)
+                index_data.setdefault("arguments", []).append(arguments_delta)
+        
+            if token := part.choices[0].delta.content or "":
+                await response_message.stream_token(token)
+
+        await response_message.update()        
+
+        if response_message.content:
+            message_history.append({"role": "assistant", "content": response_message.content})
+            cl.user_session.set("message_history", message_history)        
+
+        for index, index_data in function_data.items():
+            index_data["name"] = ''.join(index_data["name"])
+            index_data["arguments"] = ''.join(index_data["arguments"])
+
+        return response_message, function_data

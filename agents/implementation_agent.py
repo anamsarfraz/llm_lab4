@@ -9,7 +9,7 @@ class ImplementationAgent(Agent):
             "type": "function",
             "function": {
                 "name": "updateArtifact",
-                "description": "Update an artifact file which is HTML, or CSS, with the given contents.",
+                "description": "Update an artifact file which is HTML, CSS, or markdown with the given contents.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -19,7 +19,7 @@ class ImplementationAgent(Agent):
                         },
                         "contents": {
                             "type": "string",
-                            "description": "The HTML, or CSS contents to write to the file.",
+                            "description": "The HTML, CSS or markdown contents to write to the file.",
                         },
                     },
                     "required": ["filename", "contents"],
@@ -31,13 +31,14 @@ class ImplementationAgent(Agent):
     def __init__(self, name, client, prompt="", gen_kwargs=None):
 
         super().__init__(name, client, prompt=prompt, gen_kwargs=gen_kwargs)
-
+    
     async def execute(self, message_history):
         """
         Executes the agent's main functionality.
 
         Note: probably shouldn't couple this with chainlit, but this is just a prototype.
         """
+        print(f"{self.__class__.__name__}: Inside the execution and processing the request")  
         copied_message_history = message_history.copy()
 
         # Check if the first message is a system prompt
@@ -48,58 +49,42 @@ class ImplementationAgent(Agent):
             # Insert the agent's prompt at the beginning
             copied_message_history.insert(0, {"role": "system", "content": self._build_system_prompt()})
 
-        response_message = cl.Message(content="")
-        await response_message.send()
+        response_message, function_data = await self.handle_tool_calls(copied_message_history)
+        print(f"{self.__class__.__name__}: Function data: ", function_data)
+        print(f"{self.__class__.__name__}: Response text: ", response_message.content)
+        if response_message.content:
+            message_history.append({"role": "assistant", "content": response_message.content})
+            copied_message_history.append({"role": "assistant", "content": response_message.content})
+            cl.user_session.set("message_history", message_history)
 
-        stream = await self.client.chat.completions.create(messages=copied_message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
-
-        function_data = {} 
-
-        async for part in stream:
-            if part.choices[0].delta.tool_calls:
-                tool_call = part.choices[0].delta.tool_calls[0]
-                index = tool_call.index
-                function_name_delta = tool_call.function.name or ""
-                arguments_delta = tool_call.function.arguments or ""
-                index_data = function_data.setdefault(index, {})
-                index_data.setdefault("name", []).append(function_name_delta)
-                index_data.setdefault("arguments", []).append(arguments_delta)
-        
-            if token := part.choices[0].delta.content or "":
-                await response_message.stream_token(token)        
-        
-        for index, index_data in function_data.items():
-            index_data["name"] = ''.join(index_data["name"])
-            index_data["arguments"] = ''.join(index_data["arguments"])
-
-            print(f"DEBUG: function_data: {function_data}")
-
-            if "updateArtifact" == index_data["name"]:
-                arguments_dict = json.loads(index_data["arguments"])
-                filename = arguments_dict.get("filename")
-                contents = arguments_dict.get("contents")
-                
-                if filename and contents:
-                    os.makedirs("artifacts", exist_ok=True)
-                    with open(os.path.join("artifacts", filename), "w") as file:
-                        file.write(contents)
+        #print(f"DEBUG: function_data: {function_data}")
+        while function_data:
+            print(f"{self.__class__.__name__}: Received Function data just inside while loop: ", function_data)
+            for index, index_data in function_data.items():
+                if "updateArtifact" == index_data["name"]:
+                    arguments_dict = json.loads(index_data["arguments"])
+                    filename = arguments_dict.get("filename")
+                    contents = arguments_dict.get("contents")
+                    print(f"{self.__class__.__name__}: Updating artifacts: {filename} inside agent") 
                     
-                    # Add a message to the message history
-                    message_history.append({
-                        "role": "system",
-                        "content": f"The artifact '{filename}' was updated."
-                    })
-
-                    stream = await self.client.chat.completions.create(messages=message_history, stream=True, **self.gen_kwargs)
-                    async for part in stream:
-                        if token := part.choices[0].delta.content or "":
-                            await response_message.stream_token(token)
-
+                    if filename and contents:
+                        os.makedirs("artifacts", exist_ok=True)
+                        with open(os.path.join("artifacts", filename), "w") as file:
+                            file.write(contents)
+                        
+                        # Add a message to the message history
+                        message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+                        copied_message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+                        
+            response_message, function_data = await self.handle_tool_calls(copied_message_history)
+            print(f"{self.__class__.__name__}: Function data in loop: ", function_data)
+            print(f"{self.__class__.__name__}: Response text in loop: ", response_message.content)
+            if response_message.content:
+                message_history.append({"role": "assistant", "content": response_message.content})
+                copied_message_history.append({"role": "assistant", "content": response_message.content})
+                cl.user_session.set("message_history", message_history)
         else:
             print("No tool call")
 
-        await response_message.update()
-
-        return response_message
 
 

@@ -65,7 +65,7 @@ You are a pirate.
 
 @observe
 @cl.on_chat_start
-def on_chat_start():    
+def on_chat_start():
     message_history = [{"role": "system", "content": SYSTEM_PROMPT}]
     cl.user_session.set("message_history", message_history)
 
@@ -113,10 +113,9 @@ async def on_message(message: cl.Message):
     else:
         message_history.append({"role": "user", "content": message.content})
     
-    response_message = await planning_agent.execute(message_history)
+    await planning_agent.execute(message_history)
 
-    message_history.append({"role": "assistant", "content": response_message})
-    cl.user_session.set("message_history", message_history)
+
 
 if __name__ == "__main__":
     cl.main()
