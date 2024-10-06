@@ -2,30 +2,8 @@ import os
 import json
 
 from agents.base_agent import Agent
-from agents.implementation_agent import ImplementationAgent
 import chainlit as cl
-from langfuse.openai import AsyncOpenAI
 
-
-
-IMPLEMENTATION_PROMPT = """\
-You are a software engineer, implementing the web pages based on the provided plan.
-
-You should read the artifacts provided to you at the end of this prompt. Your role is to pick and implement ONE milestone at a time.
-
-You will generate both index.html and styles.css files for your implementation of each milestone and mark off the milestone in the plan markdown file.
-You will save each file using the tool available to update the artifact. Do not return the implementation to the user. Only update the artifacts with the implementation
-
-After creating the implementation, do the following:
-    1. use available tools to save or update both index.html and styles.css in the artifact folder. A tool is available to update the artifacts. 
-    2. use the available tools to mark off the milestone in the provided plan in the artifact folder. A tool is available to update the artifacts.
-
-You should also take feedback to fix a milestone. If the implementation has already been saved, no need to save it again unless there is feedback. Do not \
-use the tool again if there are no changes.
-"""
-
-client = AsyncOpenAI()
-implementation_agent = ImplementationAgent(name="Implementation Agent", client=client, prompt=IMPLEMENTATION_PROMPT)
 
 class PlanningAgent(Agent):
     tools = [
@@ -47,24 +25,6 @@ class PlanningAgent(Agent):
                         },
                     },
                     "required": ["filename", "contents"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "callAgent",
-                "description": "Call another agent to delegate a task if the user wants to implement the plan, callAgent('implementation')",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "agent_name": {
-                            "type": "string",
-                            "description": "The name of the agent to execute a task.",
-                        },
-                    },
-                    "required": ["agent_name"],
                     "additionalProperties": False,
                 },
             }
@@ -118,22 +78,13 @@ class PlanningAgent(Agent):
                         # Add a message to the message history
                         message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
                         copied_message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
-                        response_message, function_data = await self.handle_tool_calls(copied_message_history)
+                        response_message, function_data = await self.handle_tool_calls(message_history, call_tools=False)
                         print(f"{self.__class__.__name__}: Function data after updating artifact: ", function_data)
                         print(f"{self.__class__.__name__}: Response text after updating artifact: ", response_message.content)
                         if response_message.content:
                             message_history.append({"role": "assistant", "content": response_message.content})
                             copied_message_history.append({"role": "assistant", "content": response_message.content})
                             cl.user_session.set("message_history", message_history)
-                elif "callAgent" == index_data["name"]:
-                    arguments_dict = json.loads(index_data["arguments"])
-                    agent_name = arguments_dict.get("agent_name")
-                    print(f"{self.__class__.__name__}: Calling {agent_name} agent from planning agent")
-                    if agent_name == "implementation":
-                        await implementation_agent.execute(copied_message_history)
-                            
-            
-            
 
         else:
             print("No tool call")

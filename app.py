@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 import chainlit as cl
-from agents.planning_agent import PlanningAgent
+from agents.supervisor_agent import SupervisorAgent
 import base64
 
 
@@ -15,43 +15,35 @@ from langfuse.decorators import observe
 from langfuse.openai import AsyncOpenAI
  
 
-PLANNING_PROMPT = """\
-You are a software architect, preparing to build the web page in the image that the user sends. 
-Once they send an image, generate a plan, described below, in markdown format.
+SYSTEM_PROMPT = """\
+You are a pirate.
+"""
 
-If the user or reviewer confirms the plan is good, use the available tools to save it as an artifact \
-called `plan.md`. If the user has feedback on the plan, revise the plan, and save it using \
-the tool again. A tool is available to update the artifact. Your role is only to plan the \
-project. You will not implement the plan, and will not write any code in the plan.
+SUPERVISOR_PROMPT = """\
+You are a software engineer mananger, leading your team to build a web page in the image that the user sends. 
+Once they send an image, you need to work with the a software architect to generate a plan and then work with a software engineer
+to implement the milestones. These are your goals.
 
-If the plan has already been saved, no need to save it again unless there is feedback. Do not \
-use the tool again if there are no changes.
+- Work with the software architect to create and save the plan
+- Work with a software engineer to implement all the milestones, ONE milestone at a time, in the generated plan
 
-For the contents of the markdown-formatted plan, create two sections, "Overview" and "Milestones".
+You have available tool to call the right person for completing a task
 
-In a section labeled "Overview", analyze the image, and describe the elements on the page, \
-their positions, and the layout of the major sections.
-
-Using vanilla HTML and CSS, discuss anything about the layout that might have different \
-options for implementation. Review pros/cons, and recommend a course of action.
-
-In a section labeled "Milestones", describe an ordered set of milestones for methodically \
-building the web page, so that errors can be detected and corrected early. Pay close attention \
-to the aligment of elements, and describe clear expectations in each milestone. Do not include \
-testing milestones, just implementation.
-
-Milestones should be formatted like this:
-
- - [ ] 1. This is the first milestone
- - [ ] 2. This is the second milestone
- - [ ] 3. This is the third milestone
+Use the following format to build the page:
+Thought: You should always think about what the user is asking for
+Action: contacting someone to help with the task, only use callAgent to do that
+ActionInput: only one of 'planning' or 'implementation' to call the right person for the task
+Observation: The result of the action once all necessary information is gathered. Start from milestone 1, if the software engineer completes one milestone, ask the engineer to complete the next and repeat this until the last milestone has been implemented
+Thought: I now have the task completed
+Final Answer: The task has been completed based on the user input. If the planning task is complete i.e plan generated and saved. Then dont call the planning agent again until user asks for another plan.
+If all the milestones have been implemented then dont call the implementation agent again until user asks for it.
 """
 
 
 client = AsyncOpenAI()
 
 # Create an instance of the Agent class
-planning_agent = PlanningAgent(name="Planning Agent", client=client, prompt=PLANNING_PROMPT)
+supervisor_agent = SupervisorAgent(name="Supervisor Agent", client=client, prompt=SUPERVISOR_PROMPT)
 
 
 gen_kwargs = {
@@ -59,9 +51,7 @@ gen_kwargs = {
     "temperature": 0.2
 }
 
-SYSTEM_PROMPT = """\
-You are a pirate.
-"""
+
 
 @observe
 @cl.on_chat_start
@@ -87,7 +77,7 @@ async def generate_response(client, message_history, gen_kwargs):
 @observe
 async def on_message(message: cl.Message):
     message_history = cl.user_session.get("message_history", [])
-
+    
     # Processing images exclusively
     images = [file for file in message.elements if "image" in file.mime] if message.elements else []
 
@@ -112,10 +102,7 @@ async def on_message(message: cl.Message):
         })
     else:
         message_history.append({"role": "user", "content": message.content})
-    
-    await planning_agent.execute(message_history)
-
-
+    await supervisor_agent.execute(message_history)
 
 if __name__ == "__main__":
     cl.main()

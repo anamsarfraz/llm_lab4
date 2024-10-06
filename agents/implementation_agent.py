@@ -75,6 +75,7 @@ class ImplementationAgent(Agent):
                         # Add a message to the message history
                         message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
                         copied_message_history.append({"role": "system", "content": f"The artifact '{filename}' was updated."})
+            
                         
             response_message, function_data = await self.handle_tool_calls(copied_message_history)
             print(f"{self.__class__.__name__}: Function data in loop: ", function_data)

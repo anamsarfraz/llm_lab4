@@ -36,7 +36,7 @@ class Agent:
         self.client = client
         self.prompt = prompt
         self.gen_kwargs = gen_kwargs or {
-            "model": "gpt-4o",
+            "model": "gpt-4o-mini",
             "temperature": 0.2
         }
 
@@ -58,9 +58,9 @@ class Agent:
         artifacts_content += "</ARTIFACTS>"
         return f"{self.prompt}\n{artifacts_content}"
     
-    async def handle_tool_calls(self, message_history):
+    async def handle_tool_calls(self, message_history, call_tools=True):
 
-        stream = await self.client.chat.completions.create(messages=message_history, stream=True, tools=self.tools, tool_choice="auto", **self.gen_kwargs)
+        stream = await self.client.chat.completions.create(messages=message_history, stream=True, tools=self.tools if call_tools else None, **self.gen_kwargs)
 
         function_data = {}
         response_message = cl.Message(content="")
