@@ -130,8 +130,9 @@ class SupervisorAgent(Agent):
                     if agent_name == 'planning':
 
                         await planning_agent.execute(message_history)
-                    elif agent_name == "implementation":
                         message_history.append({"role": "system", "content": f"Implement the next milestone that has not been implemented yet. Start from milestone 1."})
+                        copied_message_history.append({"role": "system", "content": f"Implement the next milestone that has not been implemented yet. Start from milestone 1."})
+                    elif agent_name == "implementation":
                         await implementation_agent.execute(message_history)
 
                         message_history.append({"role": "system", "content": "Proceed to the next milestone that has not been implemented yet."})
