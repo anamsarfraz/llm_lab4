@@ -4,6 +4,7 @@ import json
 from agents.base_agent import Agent
 from agents.planning_agent import PlanningAgent
 from agents.implementation_agent import ImplementationAgent
+from agents.reviewer_agent import ReviewerAgent
 
 import chainlit as cl
 
@@ -58,12 +59,20 @@ You should also take feedback to fix a milestone. If the implementation has alre
 use the tool again if there are no changes.
 """
 
+REVIEW_PROMPT = """\
+You an a reviewer of the implementation done by the software engineer. 
+
+You should read and review the artifacts provided to you at the end of this prompt. Your role is to review ONE milestone at a time.
+You wil read the provided plan and check if the index.html and styles.css have the desired implementation of a milestone. You should provided feedback if the
+implementation looks good or the milestone needs to implemented. Also check if the provided plan was marked off for the milestone.
+"""
+
 client = AsyncOpenAI()
 
 # Create an instance of the Agent class
 planning_agent = PlanningAgent(name="Planning Agent", client=client, prompt=PLANNING_PROMPT)
 implementation_agent = ImplementationAgent(name="Implementation Agent", client=client, prompt=IMPLEMENTATION_PROMPT)
-
+reviewer_agent = ReviewerAgent(name="ReviewerAgent", client=client, prompt=REVIEW_PROMPT)
 
 class SupervisorAgent(Agent):
 
@@ -134,9 +143,9 @@ class SupervisorAgent(Agent):
                         copied_message_history.append({"role": "system", "content": f"Implement the next milestone that has not been implemented yet. Start from milestone 1."})
                     elif agent_name == "implementation":
                         await implementation_agent.execute(message_history)
-
-                        message_history.append({"role": "system", "content": "Proceed to the next milestone that has not been implemented yet."})
-                        copied_message_history.append({"role": "system", "content": "Proceed to the next milestone that has not been implemented yet."})
+                        response_message = await reviewer_agent.execute(message_history)
+                        message_history.append({"role": "system", "content": response_message})
+                        copied_message_history.append({"role": "system", "content": response_message})
                         
             response_message, function_data = await self.handle_tool_calls(copied_message_history)
             print(f"{self.__class__.__name__}: Function data in loop: ", function_data)
