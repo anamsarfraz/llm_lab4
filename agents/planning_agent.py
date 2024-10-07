@@ -89,8 +89,7 @@ class PlanningAgent(Agent):
         else:
             print("No tool call")
 
-        
-
+        print(f"{self.__class__.__name__}: Response from planning agent after creating and saving: {response_message.content}") 
         return response_message.content
 
 

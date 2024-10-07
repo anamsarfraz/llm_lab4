@@ -62,9 +62,11 @@ use the tool again if there are no changes.
 REVIEW_PROMPT = """\
 You an a reviewer of the implementation done by the software engineer. 
 
-You should read and review the artifacts provided to you at the end of this prompt. Your role is to review ONE milestone at a time.
-You wil read the provided plan and check if the index.html and styles.css have the desired implementation of a milestone. You should provided feedback if the
-implementation looks good or the milestone needs to implemented. Also check if the provided plan was marked off for the milestone.
+You should read and review the artifacts provided to you at the end of this prompt. Your role is to review the most recent implemented milestone based on the provided plan.
+You wil read the provided plan and check if the index.html and styles.css have the required implementation of a milestone. You should provided feedback if the
+implementation looks good or the implementation of the milestone needs to be improved and implemented again. Also check if the provided plan was marked off for the completed milestone.
+
+Your role is only to review the implementation of only ONE (and that too the latest) completed milestone. You will not write or implement the plan, and will not write any code in the plan.
 """
 
 client = AsyncOpenAI()
@@ -72,7 +74,7 @@ client = AsyncOpenAI()
 # Create an instance of the Agent class
 planning_agent = PlanningAgent(name="Planning Agent", client=client, prompt=PLANNING_PROMPT)
 implementation_agent = ImplementationAgent(name="Implementation Agent", client=client, prompt=IMPLEMENTATION_PROMPT)
-reviewer_agent = ReviewerAgent(name="ReviewerAgent", client=client, prompt=REVIEW_PROMPT)
+reviewer_agent = ReviewerAgent(name="Reviewer Agent", client=client, prompt=REVIEW_PROMPT)
 
 class SupervisorAgent(Agent):
 
@@ -137,15 +139,18 @@ class SupervisorAgent(Agent):
                     agent_name = arguments_dict.get("agent_name")
                     print(f"{self.__class__.__name__}: Calling {agent_name} agent from supervisor agent")
                     if agent_name == 'planning':
-
-                        await planning_agent.execute(message_history)
-                        message_history.append({"role": "system", "content": f"Implement the next milestone that has not been implemented yet. Start from milestone 1."})
-                        copied_message_history.append({"role": "system", "content": f"Implement the next milestone that has not been implemented yet. Start from milestone 1."})
+                        response_message = await planning_agent.execute(message_history)
+                        message_history.append({"role": "system", "content": response_message})
+                        copied_message_history.append({"role": "system", "content": response_message})
                     elif agent_name == "implementation":
-                        await implementation_agent.execute(message_history)
+                        response_message = await implementation_agent.execute(message_history)
+                        message_history.append({"role": "system", "content": response_message})
+                        copied_message_history.append({"role": "system", "content": response_message})
+                    elif agent_name == "reviewer":
                         response_message = await reviewer_agent.execute(message_history)
                         message_history.append({"role": "system", "content": response_message})
                         copied_message_history.append({"role": "system", "content": response_message})
+
                         
             response_message, function_data = await self.handle_tool_calls(copied_message_history)
             print(f"{self.__class__.__name__}: Function data in loop: ", function_data)
